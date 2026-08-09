@@ -1,0 +1,13 @@
+# Archivos de base de datos
+pelizone.db
+
+# Credenciales (NUNCA SUBIR A GITHUB)
+credentials.json
+sesion.json
+
+# Entornos virtuales y compilaciones
+venv/
+__pycache__/
+dist/
+build/
+*.spec
