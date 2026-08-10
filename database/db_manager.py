@@ -4,7 +4,7 @@ import sys
 import traceback
 import re
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo  # <-- Importado para fijar la hora correcta de Colombia
+from zoneinfo import ZoneInfo
 import gspread
 from google.oauth2.service_account import Credentials
 import threading
@@ -163,7 +163,8 @@ class DBManager:
             
             conn.commit()
 
-    def limpiar_telefono(self, telefono_str: str) -> str:
+    @staticmethod
+    def limpiar_telefono(telefono_str: str) -> str:
         if not telefono_str or str(telefono_str).strip().lower() == "sin número":
             return "Sin número"
         
