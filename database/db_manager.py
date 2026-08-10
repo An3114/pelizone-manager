@@ -4,6 +4,7 @@ import sys
 import traceback
 import re
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo  # <-- Importado para fijar la hora correcta de Colombia
 import gspread
 from google.oauth2.service_account import Credentials
 import threading
@@ -246,7 +247,8 @@ class DBManager:
             print(f"⚠️ Error sincronizando usuarios desde la nube: {e}")
 
     def limpiar_clientes_vencidos(self):
-        hoy = datetime.now()
+        zona_colombia = ZoneInfo("America/Bogota")
+        hoy = datetime.now(zona_colombia)
         limite_sin_numero = (hoy - timedelta(days=5)).strftime("%Y-%m-%d")
         limite_con_numero = (hoy - timedelta(days=150)).strftime("%Y-%m-%d")
 
@@ -365,7 +367,9 @@ class DBManager:
         if self.hoja_clientes:
             self.sincronizar_desde_google_sheets()
 
-        hoy_iso = datetime.now().strftime("%Y-%m-%d")
+        zona_colombia = ZoneInfo("America/Bogota")
+        hoy_iso = datetime.now(zona_colombia).strftime("%Y-%m-%d")
+        
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
@@ -398,7 +402,8 @@ class DBManager:
             conn.commit()
 
     def renovar_cliente(self, cliente_id: int):
-        hoy_obj = datetime.now()
+        zona_colombia = ZoneInfo("America/Bogota")
+        hoy_obj = datetime.now(zona_colombia)
         hoy_iso = hoy_obj.strftime("%Y-%m-%d")
         nueva_renovacion_iso = (hoy_obj + timedelta(days=30)).strftime("%Y-%m-%d")
         
@@ -426,7 +431,8 @@ class DBManager:
     def renovar_por_telefono(self, telefono_buscar: str, tienda_filtro=None):
         telefono_buscar = self.limpiar_telefono(telefono_buscar)
         
-        hoy_obj = datetime.now()
+        zona_colombia = ZoneInfo("America/Bogota")
+        hoy_obj = datetime.now(zona_colombia)
         hoy_iso = hoy_obj.strftime("%Y-%m-%d")
         nueva_renovacion_iso = (hoy_obj + timedelta(days=30)).strftime("%Y-%m-%d")
         
