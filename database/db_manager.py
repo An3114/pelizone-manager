@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import gspread
 from google.oauth2.service_account import Credentials
 import threading
+import json
 
 class DBManager:
     def __init__(self, db_name="pelizone.db"):
@@ -16,6 +17,20 @@ class DBManager:
             self.base_dir = os.getcwd()
 
         self.db_path = os.path.join(self.base_dir, db_name)
+        
+        # =======================================================
+        # SOPORTE PARA RENDER / VARIABLES DE ENTORNO EN LA NUBE
+        # =======================================================
+        if "GOOGLE_CREDENTIALS_JSON" in os.environ:
+            try:
+                env_creds_path = os.path.join(self.base_dir, "credentials.json")
+                with open(env_creds_path, "w") as f:
+                    f.write(os.environ["GOOGLE_CREDENTIALS_JSON"])
+                print("☁️ credentials.json creado exitosamente desde la variable de entorno de Render.")
+            except Exception as e:
+                print(f"⚠️ Error al crear credentials.json desde el entorno: {e}")
+        # =======================================================
+
         self.creds_path = self._resolver_ruta_credenciales()
 
         self._create_tables()
@@ -56,7 +71,7 @@ class DBManager:
             # Hoja 1 para Clientes
             self.hoja_clientes = archivo.sheet1
 
-            # Hoja para Usuarios (busca o crea automáticamente)
+            # Hoja para Usuarios (la busca o la crea automáticamente si no existe)
             try:
                 self.hoja_usuarios = archivo.worksheet("Usuarios")
             except gspread.exceptions.WorksheetNotFound:
@@ -147,46 +162,16 @@ class DBManager:
             
             conn.commit()
 
-    # =======================================================
-    # EXTRACCIÓN Y LIMPIEZA INTELIGENTE DE TELÉFONOS
-    # =======================================================
-    @staticmethod
-    def limpiar_telefono(telefono_str: str) -> str:
-        """
-        Analiza cualquier texto (mensajes completos, números con formato, etc.),
-        extrae los dígitos reales y devuelve un número de 10 dígitos o 'Sin número'.
-        """
-        if not telefono_str or str(telefono_str).strip().lower() in ("sin número", "sin numero", ""):
+    def limpiar_telefono(self, telefono_str: str) -> str:
+        if not telefono_str or str(telefono_str).strip().lower() == "sin número":
             return "Sin número"
-
-        texto = str(telefono_str).strip()
-
-        # 1. Intentar extraer un patrón de celular de 10 dígitos (ej: 3XXXXXXXXX)
-        coincidencia_directa = re.search(r'\b3\d{9}\b', re.sub(r'[^\d]', '', texto))
-        if coincidencia_directa:
-            return coincidencia_directa.group(0)
-
-        # 2. Si no coincide de forma exacta, extraer todos los dígitos numéricos del string
-        digitos = re.sub(r'\D', '', texto)
-
-        # Remover prefijos de país internacionales (ej: +57, 57, 057, 0057)
+        
+        digitos = re.sub(r'\D', '', str(telefono_str))
+        
         if len(digitos) == 12 and digitos.startswith('57'):
             digitos = digitos[2:]
-        elif len(digitos) == 13 and digitos.startswith('057'):
-            digitos = digitos[3:]
-        elif len(digitos) == 14 and digitos.startswith('0057'):
-            digitos = digitos[4:]
-
-        # Si aún tiene más de 10 dígitos, buscar la subsecuencia de 10 que inicie por 3
-        if len(digitos) > 10:
-            match_movil = re.search(r'3\d{9}', digitos)
-            if match_movil:
-                return match_movil.group(0)
-            digitos = digitos[-10:]
-
-        return digitos if len(digitos) >= 7 else "Sin número"
-
-    # =======================================================
+            
+        return digitos if digitos else "Sin número"
 
     def sincronizar_desde_google_sheets(self):
         if not self.hoja_clientes:
@@ -204,9 +189,7 @@ class DBManager:
                     for i, fila in enumerate(filas[1:], start=2):
                         if len(fila) < 5:
                             continue
-                        nombre, telefono, tienda, f_compra_ui, f_renov_ui = (
-                            fila[0].strip(), fila[1].strip(), fila[2].strip(), fila[3].strip(), fila[4].strip()
-                        )
+                        nombre, telefono, tienda, f_compra_ui, f_renov_ui = fila[0].strip(), fila[1].strip(), fila[2].strip(), fila[3].strip(), fila[4].strip()
                         
                         telefono = self.limpiar_telefono(telefono)
 
@@ -248,9 +231,7 @@ class DBManager:
                 for fila in filas[1:]:
                     if len(fila) < 4:
                         continue
-                    usuario, clave, rol, tienda_asignada = (
-                        fila[0].strip(), fila[1].strip(), fila[2].strip(), fila[3].strip()
-                    )
+                    usuario, clave, rol, tienda_asignada = fila[0].strip(), fila[1].strip(), fila[2].strip(), fila[3].strip()
 
                     cursor.execute("SELECT id FROM usuarios WHERE usuario = ?", (usuario,))
                     if not cursor.fetchone():
@@ -347,11 +328,7 @@ class DBManager:
             self._registrar_historial(cursor, cliente_id, fecha_compra_iso, "Registro Inicial")
             conn.commit()
 
-        datos_fila = [
-            nombre, telefono, tienda, fecha_compra_ui, 
-            datetime.strptime(fecha_renovacion_iso, "%Y-%m-%d").strftime("%d/%m/%Y"), 
-            "Nuevo", observaciones
-        ]
+        datos_fila = [nombre, telefono, tienda, fecha_compra_ui, datetime.strptime(fecha_renovacion_iso, "%Y-%m-%d").strftime("%d/%m/%Y"), "Nuevo", observaciones]
         threading.Thread(target=self._respaldar_en_nube, args=(datos_fila,), daemon=True).start()
 
     def registrar_clientes_masivo(self, clientes_lista: list):
@@ -429,8 +406,7 @@ class DBManager:
             cursor = conn.cursor()
             cursor.execute("SELECT nombre, telefono, tienda FROM clientes WHERE id = ?", (cliente_id,))
             cli = cursor.fetchone()
-            if not cli: 
-                return
+            if not cli: return
             nombre, telefono, tienda = cli
 
             cursor.execute('''
